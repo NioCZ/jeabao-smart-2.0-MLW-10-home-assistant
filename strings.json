@@ -1,0 +1,39 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Jebao MLW Local",
+        "description": "Leave host empty to discover pumps by UDP broadcast. To add devices manually, enter one or more IP addresses separated by commas.",
+        "data": {
+          "host": "Host or host list",
+          "port": "TCP port",
+          "name": "Device name prefix"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the pump.",
+      "cannot_discover": "No new Jebao pump was discovered. You can enter IP addresses manually.",
+      "invalid_host": "Enter at least one valid host."
+    },
+    "abort": {
+      "already_configured": "These pumps are already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Jebao MLW Local options",
+        "description": "Edit the configured pump IP addresses. Use commas for multiple pumps.",
+        "data": {
+          "host": "Host list",
+          "port": "TCP port",
+          "reconnect_delay": "Reconnect delay"
+        }
+      }
+    },
+    "error": {
+      "invalid_host": "Enter at least one valid host."
+    }
+  }
+}

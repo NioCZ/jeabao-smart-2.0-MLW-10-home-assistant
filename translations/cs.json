@@ -1,0 +1,39 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Jebao MLW Local",
+        "description": "Nechte pole Host prazdne pro vyhledani pump pres UDP broadcast. Pro rucni pridani zadejte jednu nebo vice IP adres oddelenych carkou.",
+        "data": {
+          "host": "Host nebo seznam hostu",
+          "port": "TCP port",
+          "name": "Prefix nazvu zarizeni"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "K pumpe se nelze pripojit.",
+      "cannot_discover": "Nebyla nalezena zadna nova Jebao pumpa. IP adresy muzete zadat rucne.",
+      "invalid_host": "Zadejte alespon jeden platny host."
+    },
+    "abort": {
+      "already_configured": "Tyto pumpy uz jsou nakonfigurovane."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Moznosti Jebao MLW Local",
+        "description": "Upravte IP adresy nakonfigurovanych pump. Pro vice pump pouzijte carky.",
+        "data": {
+          "host": "Seznam hostu",
+          "port": "TCP port",
+          "reconnect_delay": "Prodleva znovupripojeni"
+        }
+      }
+    },
+    "error": {
+      "invalid_host": "Zadejte alespon jeden platny host."
+    }
+  }
+}

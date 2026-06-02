@@ -1,0 +1,12 @@
+{
+  "domain": "jebao_mlw",
+  "name": "Jebao MLW Local",
+  "codeowners": [],
+  "config_flow": true,
+  "documentation": "https://github.com/pvlacil/ha-jebao-mlw-local",
+  "integration_type": "device",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/pvlacil/ha-jebao-mlw-local/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}
