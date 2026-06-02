@@ -1,55 +1,60 @@
-# Jebao MLW Local pro Home Assistant
+# Jebao MLW Local for Home Assistant
 
-Custom integrace pro lokalni ovladani Jebao MLW wave pump pres Gizwits LAN protokol. Vychazi z overene komunikace v `jeabao-smart 2.0 MLW-10/test.py` a nepouziva cloud.
+Custom Home Assistant integration for local control of Jebao MLW wave pumps over the Gizwits LAN protocol. It is based on the verified communication from `jeabao-smart 2.0 MLW-10/test.py` and does not use the cloud.
 
-## Co integrace umi
+## Features
 
-- UDP discovery na portu `12414`
-- TCP komunikace s pumpou na portu `12416`
-- zapamatovani pump podle ID z UDP odpovedi, ne podle IP adresy
-- automaticke znovupripojeni po vypadku
-- vice pump v jedne konfiguraci
-- entity pro zapnuti/vypnuti, rezim, vykon, frekvenci, krmeni a diagnostiku
-- oddelenou protokolovou vrstvu v `custom_components/jebao_mlw/api.py`, aby slo pozdeji doplnit dalsi Jebao profily
+- UDP discovery on port `12414`
+- TCP communication on port `12416`
+- device identity stored from the UDP discovery response, not from the IP address
+- automatic IP resolution on Home Assistant startup and after reconnects
+- automatic reconnect after connection loss
+- multiple pumps in one integration entry
+- entities for power, mode, flow, frequency, feed mode and diagnostics
+- protocol code separated in `custom_components/jebao_mlw/api.py` so other Jebao device profiles can be added later
 
-## Instalace pres HACS
+## Installation With HACS
 
-1. Nahraj obsah tohoto adresare do GitHub repozitare.
-2. V HACS otevri `Custom repositories`.
-3. Pridej URL repozitare jako kategorii `Integration`.
-4. Nainstaluj `Jebao MLW Local`.
-5. Restartuj Home Assistant.
-6. V `Settings > Devices & services` pridej integraci `Jebao MLW Local`.
+1. Upload this repository to GitHub.
+2. Open HACS and go to `Custom repositories`.
+3. Add the repository URL as category `Integration`.
+4. Install `Jebao MLW Local`.
+5. Restart Home Assistant.
+6. Go to `Settings > Devices & services` and add `Jebao MLW Local`.
 
-Pokud nechas pole `Host` prazdne, integrace se pokusi najit vsechny pumpy na lokalni siti. Z UDP odpovedi si ulozi stabilni identitu zarizeni a IP adresu pak bere jen jako posledni znamou/fallback hodnotu. Pri startu Home Assistantu i po vypadku spojeni znovu posle UDP discovery a pripoji se k aktualni IP dane pumpy.
+## Adding Pumps
 
-Pro rucni konfiguraci zadej jednu nebo vice IP adres oddelenych carkou, napriklad:
+The recommended setup is to leave `Manual IP addresses` empty. The integration will scan the local network with UDP discovery, show the pumps it found, and store their discovered device IDs. The IP address is only kept as a last-known fallback value.
+
+When Home Assistant starts, or when a pump reconnects after a network outage, the integration sends UDP discovery again and connects to the current IP address of the stored pump ID.
+
+You can still add pumps manually by entering one or more IP addresses separated by commas:
 
 ```text
 192.168.1.41, 192.168.1.42
 ```
 
-I pri rucnim pridani se integrace pokusi paralelne pres UDP zjistit ID zarizeni. Pokud pumpa na UDP discovery odpovi, ulozi se jeji skutecne ID a pozdejsi zmena IP nebude vadit.
+Even during manual setup, the integration tries to enrich the device with UDP discovery metadata. If the pump answers the discovery request, later IP changes should not matter.
 
-## Rucni instalace
+## Manual Installation
 
-Zkopiruj slozku:
+Copy this folder:
 
 ```text
 custom_components/jebao_mlw
 ```
 
-do Home Assistant konfigurace:
+to your Home Assistant configuration directory:
 
 ```text
 /config/custom_components/jebao_mlw
 ```
 
-Potom restartuj Home Assistant a pridej integraci z UI.
+Restart Home Assistant and add the integration from the UI.
 
-## Entity
+## Entities
 
-Pro kazdou pumpu vznikne vlastni HA device a tyto entity:
+Each pump becomes its own Home Assistant device with these entities:
 
 - `switch` Pump
 - `select` Mode
@@ -60,9 +65,9 @@ Pro kazdou pumpu vznikne vlastni HA device a tyto entity:
 - `binary_sensor` Connected
 - `sensor` Feed remaining
 - `sensor` Last seen
-- `sensor` Raw mode, ve vychozim stavu vypnuty v entity registry
+- `sensor` Raw mode, disabled by default in the entity registry
 
-## Podporovane rezimy
+## Supported Modes
 
 - Classic Pulse
 - Classic Cross-flow
@@ -71,13 +76,13 @@ Pro kazdou pumpu vznikne vlastni HA device a tyto entity:
 - Constant
 - Feed mode
 
-## Poznamky k dalsim Jebao zarizenim
+## Extending to Other Jebao Devices
 
-Zaklad discovery, TCP handshake a login jsou oddelene od MLW payloadu. Pro dalsi model se nejspis bude upravovat hlavne:
+Discovery, TCP handshake and login are separated from the MLW-specific payloads. For another Gizwits-based Jebao device, the most likely places to update are:
 
 - `MODE_PROFILES`
 - `MODE_FROM_RAW_BASE`
 - `parse_mlw_state_from_frame`
-- payloady v `MlwPumpClient.async_set_mode`, `async_set_power` a `async_start_feed`
+- payload builders in `MlwPumpClient.async_set_mode`, `async_set_power` and `async_start_feed`
 
-Pokud dalsi Jebao zarizeni zustane na Gizwits LAN protokolu, melo by jit pridat jako dalsi profil bez prepisovani cele integrace.
+If another Jebao device uses the same Gizwits LAN base protocol, it should be possible to add it as a new device profile without rewriting the whole integration.

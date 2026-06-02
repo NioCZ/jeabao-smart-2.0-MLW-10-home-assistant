@@ -30,6 +30,8 @@ from .const import (
     DOMAIN,
 )
 
+CONF_CONFIRM = "confirm"
+
 
 def _entry_uid(devices: list[dict[str, Any]]) -> str:
     source = ",".join(
@@ -46,10 +48,32 @@ def _device_name(prefix: str, index: int, total: int, suffix: str) -> str:
     return f"{prefix} {suffix or index}"
 
 
+def _format_discovered_devices(devices: list[dict[str, Any]]) -> str:
+    """Format discovered devices for the confirmation screen."""
+
+    lines = []
+    for index, device in enumerate(devices, start=1):
+        identifier = (
+            device.get(CONF_DISCOVERY_ID)
+            or device.get(CONF_DISCOVERY_FINGERPRINT)
+            or device.get(CONF_DEVICE_ID)
+            or "unknown id"
+        )
+        lines.append(
+            f"{index}. {device.get(CONF_NAME, DEFAULT_NAME)} - "
+            f"IP {device[CONF_HOST]} - ID {identifier}"
+        )
+    return "\n".join(lines)
+
+
 class JebaoMlwConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Jebao MLW."""
 
     VERSION = 1
+
+    def __init__(self) -> None:
+        self._pending_devices: list[dict[str, Any]] = []
+        self._pending_name = DEFAULT_NAME
 
     @staticmethod
     @callback
@@ -125,9 +149,15 @@ class JebaoMlwConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 devices = self._filter_already_configured(devices)
 
                 if not devices:
-                    errors["base"] = "cannot_discover"
+                    errors["base"] = (
+                        "already_configured"
+                        if discovered
+                        else "cannot_discover"
+                    )
                 else:
-                    return await self._async_create_entry(devices, name)
+                    self._pending_devices = devices
+                    self._pending_name = name
+                    return await self.async_step_discovered()
 
         return self.async_show_form(
             step_id="user",
@@ -139,6 +169,28 @@ class JebaoMlwConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 }
             ),
             errors=errors,
+        )
+
+    async def async_step_discovered(self, user_input: dict[str, Any] | None = None):
+        """Confirm devices found by UDP discovery."""
+
+        if not self._pending_devices:
+            return await self.async_step_user()
+
+        if user_input is not None:
+            if user_input.get(CONF_CONFIRM, True):
+                return await self._async_create_entry(
+                    self._pending_devices, self._pending_name
+                )
+            self._pending_devices = []
+            return await self.async_step_user()
+
+        return self.async_show_form(
+            step_id="discovered",
+            data_schema=vol.Schema({vol.Required(CONF_CONFIRM, default=True): bool}),
+            description_placeholders={
+                "devices": _format_discovered_devices(self._pending_devices)
+            },
         )
 
     async def _async_create_entry(self, devices: list[dict[str, Any]], name: str):

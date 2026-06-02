@@ -3,18 +3,26 @@
     "step": {
       "user": {
         "title": "Jebao MLW Local",
-        "description": "Nechte pole Host prazdne pro vyhledani pump pres UDP broadcast. Integrace ulozi nalezene ID zarizeni a pri kazdem znovupripojeni si znovu dohleda aktualni IP adresu. Pro rucni pridani zadejte jednu nebo vice IP adres oddelenych carkou.",
+        "description": "Nechte rucni IP adresy prazdne pro sken lokalni site. Integrace ulozi nalezene ID zarizeni a pri kazdem znovupripojeni si znovu dohleda aktualni IP adresu.",
         "data": {
-          "host": "Host nebo seznam hostu",
+          "host": "Rucni IP adresy (volitelne)",
           "port": "TCP port",
           "name": "Prefix nazvu zarizeni"
+        }
+      },
+      "discovered": {
+        "title": "Nalezene Jebao pumpy",
+        "description": "Na lokalni siti byly nalezeny tyto pumpy:\n\n{devices}\n\nPotvrzenim je pridate do Home Assistantu.",
+        "data": {
+          "confirm": "Pridat tyto pumpy"
         }
       }
     },
     "error": {
+      "already_configured": "Vsechny nalezene pumpy uz jsou nakonfigurovane.",
       "cannot_connect": "K pumpe se nelze pripojit.",
       "cannot_discover": "Nebyla nalezena zadna nova Jebao pumpa. IP adresy muzete zadat rucne.",
-      "invalid_host": "Zadejte alespon jeden platny host."
+      "invalid_host": "Zadejte alespon jednu platnou IP adresu."
     },
     "abort": {
       "already_configured": "Tyto pumpy uz jsou nakonfigurovane."
@@ -26,14 +34,14 @@
         "title": "Moznosti Jebao MLW Local",
         "description": "Upravte zalozni IP adresy. Pokud bylo nalezeno ID zarizeni, integrace si pred pripojenim stejne dohleda aktualni IP pres UDP.",
         "data": {
-          "host": "Seznam hostu",
+          "host": "Zalozni IP adresy",
           "port": "TCP port",
           "reconnect_delay": "Prodleva znovupripojeni"
         }
       }
     },
     "error": {
-      "invalid_host": "Zadejte alespon jeden platny host."
+      "invalid_host": "Zadejte alespon jednu platnou zalozni IP adresu."
     }
   }
 }

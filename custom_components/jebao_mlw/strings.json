@@ -3,18 +3,26 @@
     "step": {
       "user": {
         "title": "Jebao MLW Local",
-        "description": "Leave host empty to discover pumps by UDP broadcast. The integration stores the discovered device ID and will resolve the current IP address again on every reconnect. To add devices manually, enter one or more IP addresses separated by commas.",
+        "description": "Leave manual IP addresses empty to scan the local network. The integration stores the discovered device ID and resolves the current IP address again on every reconnect.",
         "data": {
-          "host": "Host or host list",
+          "host": "Manual IP addresses (optional)",
           "port": "TCP port",
           "name": "Device name prefix"
+        }
+      },
+      "discovered": {
+        "title": "Discovered Jebao pumps",
+        "description": "The following pumps were found on the local network:\n\n{devices}\n\nConfirm to add them to Home Assistant.",
+        "data": {
+          "confirm": "Add these pumps"
         }
       }
     },
     "error": {
+      "already_configured": "All discovered pumps are already configured.",
       "cannot_connect": "Cannot connect to the pump.",
       "cannot_discover": "No new Jebao pump was discovered. You can enter IP addresses manually.",
-      "invalid_host": "Enter at least one valid host."
+      "invalid_host": "Enter at least one valid IP address."
     },
     "abort": {
       "already_configured": "These pumps are already configured."
@@ -26,14 +34,14 @@
         "title": "Jebao MLW Local options",
         "description": "Edit the fallback IP addresses. When a device ID was discovered, the integration will still resolve the current IP by UDP before connecting.",
         "data": {
-          "host": "Host list",
+          "host": "Fallback IP addresses",
           "port": "TCP port",
           "reconnect_delay": "Reconnect delay"
         }
       }
     },
     "error": {
-      "invalid_host": "Enter at least one valid host."
+      "invalid_host": "Enter at least one valid fallback IP address."
     }
   }
 }
