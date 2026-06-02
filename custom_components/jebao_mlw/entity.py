@@ -17,9 +17,14 @@ class JebaoMlwEntity(CoordinatorEntity[JebaoMlwCoordinator]):
     def __init__(self, coordinator: JebaoMlwCoordinator, device_id: str, key: str, name: str) -> None:
         super().__init__(coordinator)
         self.device_id = device_id
-        self.device = coordinator.devices[device_id]
         self._attr_unique_id = f"{device_id}_{key}"
         self._attr_name = name
+
+    @property
+    def device(self):
+        """Return the latest device metadata."""
+
+        return self.coordinator.devices[self.device_id]
 
     @property
     def device_info(self) -> DeviceInfo:

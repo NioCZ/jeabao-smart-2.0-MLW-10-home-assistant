@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Jebao MLW Local",
-        "description": "Nechte pole Host prazdne pro vyhledani pump pres UDP broadcast. Pro rucni pridani zadejte jednu nebo vice IP adres oddelenych carkou.",
+        "description": "Nechte pole Host prazdne pro vyhledani pump pres UDP broadcast. Integrace ulozi nalezene ID zarizeni a pri kazdem znovupripojeni si znovu dohleda aktualni IP adresu. Pro rucni pridani zadejte jednu nebo vice IP adres oddelenych carkou.",
         "data": {
           "host": "Host nebo seznam hostu",
           "port": "TCP port",
@@ -24,7 +24,7 @@
     "step": {
       "init": {
         "title": "Moznosti Jebao MLW Local",
-        "description": "Upravte IP adresy nakonfigurovanych pump. Pro vice pump pouzijte carky.",
+        "description": "Upravte zalozni IP adresy. Pokud bylo nalezeno ID zarizeni, integrace si pred pripojenim stejne dohleda aktualni IP pres UDP.",
         "data": {
           "host": "Seznam hostu",
           "port": "TCP port",

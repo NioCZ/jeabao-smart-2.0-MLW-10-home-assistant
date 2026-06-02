@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import logging
 import socket
 import time
@@ -17,6 +18,8 @@ from homeassistant.core import HomeAssistant
 from .const import (
     CONF_API_SERVER,
     CONF_DEVICE_ID,
+    CONF_DISCOVERY_FINGERPRINT,
+    CONF_DISCOVERY_ID,
     CONF_HOST,
     CONF_MODEL,
     CONF_NAME,
@@ -115,6 +118,7 @@ class DiscoveredJebaoDevice:
 
     host: str
     device_id: str = ""
+    fingerprint: str = ""
     version: str = ""
     api_server: str = ""
     model: str = MODEL_MLW_10
@@ -123,13 +127,21 @@ class DiscoveredJebaoDevice:
     def stable_id(self) -> str:
         """Return the best available stable identifier."""
 
-        return self.device_id or self.host
+        return self.device_id or self.fingerprint or self.host
+
+    @property
+    def short_id(self) -> str:
+        """Return a compact identifier for generated names."""
+
+        return (self.device_id or self.fingerprint or self.host)[-6:]
 
     def as_config(self, *, name: str | None = None, port: int = DEFAULT_PORT) -> dict[str, Any]:
         """Return a Home Assistant config-entry device dict."""
 
         return {
             CONF_DEVICE_ID: self.stable_id,
+            CONF_DISCOVERY_ID: self.device_id,
+            CONF_DISCOVERY_FINGERPRINT: self.fingerprint,
             CONF_HOST: self.host,
             CONF_PORT: port,
             CONF_NAME: name or f"{DEFAULT_NAME} {self.host}",
@@ -148,6 +160,8 @@ class JebaoMlwDeviceConfig:
     port: int = DEFAULT_PORT
     name: str = DEFAULT_NAME
     model: str = MODEL_MLW_10
+    discovery_id: str | None = None
+    discovery_fingerprint: str | None = None
     version: str | None = None
     api_server: str | None = None
 
@@ -181,8 +195,17 @@ def build_devices_from_config(raw_devices: list[dict[str, Any]]) -> dict[str, Je
 
     devices: dict[str, JebaoMlwDeviceConfig] = {}
     for index, raw_device in enumerate(raw_devices, start=1):
-        host = str(raw_device[CONF_HOST]).strip()
-        device_id = str(raw_device.get(CONF_DEVICE_ID) or host).strip()
+        host = str(raw_device.get(CONF_HOST, "")).strip()
+        discovery_id = str(raw_device.get(CONF_DISCOVERY_ID) or "").strip()
+        discovery_fingerprint = str(
+            raw_device.get(CONF_DISCOVERY_FINGERPRINT) or ""
+        ).strip()
+        device_id = str(
+            raw_device.get(CONF_DEVICE_ID)
+            or discovery_id
+            or discovery_fingerprint
+            or host
+        ).strip()
         if device_id in devices:
             device_id = f"{device_id}_{index}"
 
@@ -192,6 +215,8 @@ def build_devices_from_config(raw_devices: list[dict[str, Any]]) -> dict[str, Je
             port=int(raw_device.get(CONF_PORT, DEFAULT_PORT)),
             name=str(raw_device.get(CONF_NAME) or f"{DEFAULT_NAME} {host}"),
             model=str(raw_device.get(CONF_MODEL) or MODEL_MLW_10),
+            discovery_id=discovery_id or None,
+            discovery_fingerprint=discovery_fingerprint or None,
             version=raw_device.get(CONF_VERSION) or None,
             api_server=raw_device.get(CONF_API_SERVER) or None,
         )
@@ -226,6 +251,7 @@ def parse_discovery_response(data: bytes, host: str) -> DiscoveredJebaoDevice | 
     if len(data) < 8 or data[:4] != PREFIX or data[7] != 0x04:
         return None
 
+    fingerprint = hashlib.sha1(data).hexdigest()[:16]
     device_id = ""
     if len(data) > 10:
         declared_length = data[9]
@@ -248,9 +274,43 @@ def parse_discovery_response(data: bytes, host: str) -> DiscoveredJebaoDevice | 
     return DiscoveredJebaoDevice(
         host=host,
         device_id=device_id,
+        fingerprint=fingerprint,
         version=version,
         api_server=api_server,
     )
+
+
+def discovery_match_score(
+    configured: JebaoMlwDeviceConfig, discovered: DiscoveredJebaoDevice
+) -> int:
+    """Return how confidently a discovery response matches a configured device."""
+
+    discovered_ids = {
+        value
+        for value in (
+            discovered.stable_id,
+            discovered.device_id,
+            discovered.fingerprint,
+        )
+        if value
+    }
+    configured_ids = {
+        value
+        for value in (
+            configured.id,
+            configured.discovery_id,
+            configured.discovery_fingerprint,
+        )
+        if value
+    }
+
+    if configured_ids & discovered_ids:
+        return 100
+
+    if configured.host and configured.host == discovered.host:
+        return 10
+
+    return 0
 
 
 def discover_devices(timeout: float = DEFAULT_DISCOVERY_TIMEOUT) -> list[DiscoveredJebaoDevice]:

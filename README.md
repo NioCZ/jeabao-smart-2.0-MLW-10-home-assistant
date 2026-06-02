@@ -6,6 +6,7 @@ Custom integrace pro lokalni ovladani Jebao MLW wave pump pres Gizwits LAN proto
 
 - UDP discovery na portu `12414`
 - TCP komunikace s pumpou na portu `12416`
+- zapamatovani pump podle ID z UDP odpovedi, ne podle IP adresy
 - automaticke znovupripojeni po vypadku
 - vice pump v jedne konfiguraci
 - entity pro zapnuti/vypnuti, rezim, vykon, frekvenci, krmeni a diagnostiku
@@ -20,11 +21,15 @@ Custom integrace pro lokalni ovladani Jebao MLW wave pump pres Gizwits LAN proto
 5. Restartuj Home Assistant.
 6. V `Settings > Devices & services` pridej integraci `Jebao MLW Local`.
 
-Pokud nechas pole `Host` prazdne, integrace se pokusi najit vsechny pumpy na lokalni siti. Pro rucni konfiguraci zadej jednu nebo vice IP adres oddelenych carkou, napriklad:
+Pokud nechas pole `Host` prazdne, integrace se pokusi najit vsechny pumpy na lokalni siti. Z UDP odpovedi si ulozi stabilni identitu zarizeni a IP adresu pak bere jen jako posledni znamou/fallback hodnotu. Pri startu Home Assistantu i po vypadku spojeni znovu posle UDP discovery a pripoji se k aktualni IP dane pumpy.
+
+Pro rucni konfiguraci zadej jednu nebo vice IP adres oddelenych carkou, napriklad:
 
 ```text
 192.168.1.41, 192.168.1.42
 ```
+
+I pri rucnim pridani se integrace pokusi paralelne pres UDP zjistit ID zarizeni. Pokud pumpa na UDP discovery odpovi, ulozi se jeji skutecne ID a pozdejsi zmena IP nebude vadit.
 
 ## Rucni instalace
 

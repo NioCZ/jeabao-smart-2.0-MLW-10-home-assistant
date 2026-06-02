@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import contextlib
 from typing import Any
 
 import voluptuous as vol
@@ -19,6 +20,8 @@ from .api import (
 )
 from .const import (
     CONF_DEVICE_ID,
+    CONF_DISCOVERY_FINGERPRINT,
+    CONF_DISCOVERY_ID,
     CONF_DEVICES,
     CONF_RECONNECT_DELAY,
     DEFAULT_NAME,
@@ -27,11 +30,20 @@ from .const import (
     DOMAIN,
 )
 
+
 def _entry_uid(devices: list[dict[str, Any]]) -> str:
     source = ",".join(
         sorted(str(device.get(CONF_DEVICE_ID) or device[CONF_HOST]) for device in devices)
     )
     return hashlib.sha1(source.encode("utf-8")).hexdigest()
+
+
+def _device_name(prefix: str, index: int, total: int, suffix: str) -> str:
+    """Create a stable initial device name."""
+
+    if total == 1:
+        return prefix
+    return f"{prefix} {suffix or index}"
 
 
 class JebaoMlwConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -61,21 +73,38 @@ class JebaoMlwConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if not hosts:
                     errors["base"] = "invalid_host"
                 else:
+                    discovered_by_host = {}
+                    with contextlib.suppress(Exception):
+                        discovered_by_host = {
+                            device.host: device
+                            for device in await async_discover_devices(self.hass)
+                        }
+
                     devices = []
-                    for host in hosts:
+                    for index, host in enumerate(hosts, start=1):
                         try:
                             await async_validate_device(host, port)
                         except JebaoMlwConnectionError:
                             errors["base"] = "cannot_connect"
                             break
-                        devices.append(
-                            {
-                                CONF_DEVICE_ID: host,
-                                CONF_HOST: host,
-                                CONF_PORT: port,
-                                CONF_NAME: name if len(hosts) == 1 else f"{name} {host}",
-                            }
+                        discovered = discovered_by_host.get(host)
+                        device_name = _device_name(
+                            name,
+                            index,
+                            len(hosts),
+                            discovered.short_id if discovered else host,
                         )
+                        if discovered:
+                            devices.append(discovered.as_config(name=device_name, port=port))
+                        else:
+                            devices.append(
+                                {
+                                    CONF_DEVICE_ID: host,
+                                    CONF_HOST: host,
+                                    CONF_PORT: port,
+                                    CONF_NAME: device_name,
+                                }
+                            )
 
                     if not errors:
                         devices = self._filter_already_configured(devices)
@@ -86,10 +115,12 @@ class JebaoMlwConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 discovered = await async_discover_devices(self.hass)
                 devices = [
                     device.as_config(
-                        name=name if len(discovered) == 1 else f"{name} {device.host}",
+                        name=_device_name(
+                            name, index, len(discovered), device.short_id
+                        ),
                         port=port,
                     )
-                    for device in discovered
+                    for index, device in enumerate(discovered, start=1)
                 ]
                 devices = self._filter_already_configured(devices)
 
@@ -131,14 +162,30 @@ class JebaoMlwConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         configured = set()
         for entry in self._async_current_entries():
             for device in entry.options.get(CONF_DEVICES) or entry.data.get(CONF_DEVICES, []):
-                configured.add(str(device.get(CONF_DEVICE_ID) or device.get(CONF_HOST)))
-                configured.add(str(device.get(CONF_HOST)))
+                for key in (
+                    CONF_DEVICE_ID,
+                    CONF_DISCOVERY_ID,
+                    CONF_DISCOVERY_FINGERPRINT,
+                    CONF_HOST,
+                ):
+                    value = device.get(key)
+                    if value:
+                        configured.add(str(value))
 
         return [
             device
             for device in devices
-            if str(device.get(CONF_DEVICE_ID) or device.get(CONF_HOST)) not in configured
-            and str(device.get(CONF_HOST)) not in configured
+            if not {
+                str(value)
+                for value in (
+                    device.get(CONF_DEVICE_ID),
+                    device.get(CONF_DISCOVERY_ID),
+                    device.get(CONF_DISCOVERY_FINGERPRINT),
+                    device.get(CONF_HOST),
+                )
+                if value
+            }
+            & configured
         ]
 
 
@@ -179,13 +226,41 @@ class JebaoMlwOptionsFlow(config_entries.OptionsFlow):
             if not hosts:
                 errors["base"] = "invalid_host"
             else:
+                discovered_by_host = {}
+                with contextlib.suppress(Exception):
+                    discovered_by_host = {
+                        device.host: device
+                        for device in await async_discover_devices(self.hass)
+                    }
+
                 device_by_host = {str(device[CONF_HOST]): device for device in current_devices}
                 devices = []
-                for host in hosts:
-                    existing = dict(device_by_host.get(host, {}))
+                for index, host in enumerate(hosts):
+                    existing = dict(
+                        current_devices[index]
+                        if index < len(current_devices)
+                        else device_by_host.get(host, {})
+                    )
+                    discovered = discovered_by_host.get(host)
+                    if discovered and not existing:
+                        devices.append(
+                            discovered.as_config(
+                                name=f"{DEFAULT_NAME} {discovered.short_id}",
+                                port=port,
+                            )
+                        )
+                        continue
+
                     existing.update(
                         {
-                            CONF_DEVICE_ID: existing.get(CONF_DEVICE_ID) or host,
+                            CONF_DEVICE_ID: existing.get(CONF_DEVICE_ID)
+                            or (discovered.stable_id if discovered else host),
+                            CONF_DISCOVERY_ID: existing.get(CONF_DISCOVERY_ID)
+                            or (discovered.device_id if discovered else ""),
+                            CONF_DISCOVERY_FINGERPRINT: existing.get(
+                                CONF_DISCOVERY_FINGERPRINT
+                            )
+                            or (discovered.fingerprint if discovered else ""),
                             CONF_HOST: host,
                             CONF_PORT: port,
                             CONF_NAME: existing.get(CONF_NAME) or f"{DEFAULT_NAME} {host}",

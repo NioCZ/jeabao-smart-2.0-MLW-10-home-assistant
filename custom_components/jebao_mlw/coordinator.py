@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 from dataclasses import replace
 from typing import Any
 
@@ -18,14 +19,24 @@ from .api import (
     MODE_CONSTANT,
     MODE_FEED,
     MODE_PROFILES,
+    DiscoveredJebaoDevice,
+    JebaoMlwDeviceConfig,
     MlwPumpClient,
     PumpState,
+    async_discover_devices,
     build_devices_from_config,
     clamp_int,
+    discovery_match_score,
 )
 from .const import (
+    CONF_API_SERVER,
+    CONF_DEVICE_ID,
+    CONF_DISCOVERY_FINGERPRINT,
+    CONF_DISCOVERY_ID,
     CONF_DEVICES,
+    CONF_HOST,
     CONF_RECONNECT_DELAY,
+    CONF_VERSION,
     DEFAULT_FEED_DURATION,
     DEFAULT_RECONNECT_DELAY,
     DOMAIN,
@@ -48,6 +59,9 @@ class JebaoMlwCoordinator(DataUpdateCoordinator[dict[str, PumpState]]):
             )
         )
         self.controllers: dict[str, JebaoMlwController] = {}
+        self._discovery_cache: list[DiscoveredJebaoDevice] = []
+        self._discovery_cache_at = 0.0
+        self._discovery_lock = asyncio.Lock()
 
         super().__init__(hass, _LOGGER, name=DOMAIN)
         self.async_set_updated_data({device_id: PumpState() for device_id in self.devices})
@@ -59,9 +73,9 @@ class JebaoMlwCoordinator(DataUpdateCoordinator[dict[str, PumpState]]):
             controller = JebaoMlwController(
                 self.hass,
                 device_id,
-                device.host,
-                device.port,
+                device,
                 self.reconnect_delay,
+                self._async_resolve_host,
                 self._handle_state_update,
             )
             self.controllers[device_id] = controller
@@ -82,6 +96,136 @@ class JebaoMlwCoordinator(DataUpdateCoordinator[dict[str, PumpState]]):
         data[device_id] = state
         self.async_set_updated_data(data)
 
+    async def _async_discover_cached(self, *, force: bool = False) -> list[DiscoveredJebaoDevice]:
+        """Discover devices, sharing one UDP result between pump controllers."""
+
+        async with self._discovery_lock:
+            cache_age = time.monotonic() - self._discovery_cache_at
+            if self._discovery_cache and not force and cache_age < 5:
+                return self._discovery_cache
+
+            self._discovery_cache = await async_discover_devices(self.hass)
+            self._discovery_cache_at = time.monotonic()
+            return self._discovery_cache
+
+    async def _async_resolve_host(
+        self, device_id: str, current_host: str
+    ) -> str:
+        """Find the current IP address for a configured pump."""
+
+        device = self.devices[device_id]
+        try:
+            discovered_devices = await self._async_discover_cached()
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Jebao MLW UDP discovery failed: %s", err)
+            return current_host
+        matches = sorted(
+            (
+                (discovery_match_score(device, discovered), discovered)
+                for discovered in discovered_devices
+            ),
+            key=lambda item: item[0],
+            reverse=True,
+        )
+
+        if matches and matches[0][0] > 0:
+            discovered = matches[0][1]
+            if discovered.host != current_host:
+                _LOGGER.info(
+                    "Resolved Jebao MLW pump %s from %s to %s by UDP discovery",
+                    device_id,
+                    current_host or "unknown host",
+                    discovered.host,
+                )
+            self.devices[device_id] = replace(
+                device,
+                host=discovered.host,
+                discovery_id=discovered.device_id or device.discovery_id,
+                discovery_fingerprint=discovered.fingerprint
+                or device.discovery_fingerprint,
+                version=discovered.version or device.version,
+                api_server=discovered.api_server or device.api_server,
+            )
+            self._persist_discovery_metadata(device_id, current_host, discovered)
+            return discovered.host
+
+        return current_host
+
+    @callback
+    def _persist_discovery_metadata(
+        self,
+        device_id: str,
+        current_host: str,
+        discovered: DiscoveredJebaoDevice,
+    ) -> None:
+        """Persist learned discovery identity and latest fallback host."""
+
+        uses_options = CONF_DEVICES in self.entry.options
+        container = dict(self.entry.options if uses_options else self.entry.data)
+        raw_devices = [dict(device) for device in container.get(CONF_DEVICES, [])]
+        changed = False
+
+        for raw_device in raw_devices:
+            if not _raw_device_matches(device_id, current_host, raw_device, discovered):
+                continue
+
+            updates = {
+                CONF_HOST: discovered.host,
+                CONF_DISCOVERY_ID: discovered.device_id,
+                CONF_DISCOVERY_FINGERPRINT: discovered.fingerprint,
+                CONF_VERSION: discovered.version,
+                CONF_API_SERVER: discovered.api_server,
+            }
+            for key, value in updates.items():
+                if value and raw_device.get(key) != value:
+                    raw_device[key] = value
+                    changed = True
+            break
+
+        if not changed:
+            return
+
+        container[CONF_DEVICES] = raw_devices
+        if uses_options:
+            self.hass.config_entries.async_update_entry(
+                self.entry, options=container
+            )
+        else:
+            self.hass.config_entries.async_update_entry(self.entry, data=container)
+
+
+def _raw_device_matches(
+    device_id: str,
+    current_host: str,
+    raw_device: dict[str, Any],
+    discovered: DiscoveredJebaoDevice,
+) -> bool:
+    """Return true when a raw config-entry device is the discovered pump."""
+
+    identifiers = {
+        str(value)
+        for value in (
+            raw_device.get(CONF_DEVICE_ID),
+            raw_device.get(CONF_DISCOVERY_ID),
+            raw_device.get(CONF_DISCOVERY_FINGERPRINT),
+            raw_device.get(CONF_HOST),
+        )
+        if value
+    }
+    discovered_identifiers = {
+        str(value)
+        for value in (
+            device_id,
+            current_host,
+            discovered.stable_id,
+            discovered.device_id,
+            discovered.fingerprint,
+            discovered.host,
+        )
+        if value
+    }
+    return bool(identifiers & discovered_identifiers)
+
 
 class JebaoMlwController:
     """Maintain one persistent connection with automatic reconnect."""
@@ -90,16 +234,17 @@ class JebaoMlwController:
         self,
         hass: HomeAssistant,
         device_id: str,
-        host: str,
-        port: int,
+        device: JebaoMlwDeviceConfig,
         reconnect_delay: int,
+        host_resolver,
         state_callback,
     ) -> None:
         self.hass = hass
         self.device_id = device_id
-        self.host = host
-        self.port = port
+        self.host = device.host
+        self.port = device.port
         self.reconnect_delay = reconnect_delay
+        self._host_resolver = host_resolver
         self._state_callback = state_callback
 
         self.feed_duration = DEFAULT_FEED_DURATION
@@ -132,6 +277,7 @@ class JebaoMlwController:
 
     async def _connection_loop(self) -> None:
         while not self._stop_event.is_set():
+            self.host = await self._host_resolver(self.device_id, self.host)
             client = MlwPumpClient(self.host, self.port)
             self._client = client
 
